@@ -68,7 +68,8 @@ func (c *Client) InvokeStream(ctx context.Context, bearer, toolID string, body I
 	if err != nil {
 		return nil, mapTransportError(ctx, err)
 	}
-	defer resp.Body.Close()
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, parseHTTPError(resp)
