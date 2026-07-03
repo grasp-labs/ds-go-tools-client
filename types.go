@@ -68,21 +68,31 @@ type InvokeRequest struct {
 
 // InvokeResult is the terminal payload of a tool execution.
 //
-// Output is the assistant-visible string. Binary outputs must be base64
-// encoded by the tool before being placed here; very large outputs
-// should be uploaded to S3 and surfaced via ArtifactS3URI with a short
-// summary in Output.
+// Output is the assistant-visible string and is always text. A tool that
+// produces a binary result (a generated image, a rendered document, a
+// large export) stores the payload in DS File (POST /file/ on DS File API
+// v2) under the caller's bearer — so DS File's native owner/viewer ACLs
+// govern the artifact — and returns the DS File UUID via ArtifactFileID,
+// with a short human/model-readable summary of what was produced in
+// Output. A storage URI (S3, GCS, presigned, or otherwise) must never
+// appear in the result; the tool's actual storage backend is its own
+// implementation detail behind DS File.
+//
+// ArtifactFileID is empty when there is no artifact.
 //
 // Truncated indicates the dispatcher capped the output at
-// ToolEntry.MaxResultTokens.
+// ToolEntry.MaxResultTokens. A tool that knows its result will exceed
+// MaxResultTokens may pre-emptively persist the full result to DS File,
+// set ArtifactFileID, put a stable summary stub in Output, and set
+// Truncated.
 type InvokeResult struct {
-	ToolUseID     string    `json:"tool_use_id"`
-	Output        string    `json:"output"`
-	ArtifactS3URI string    `json:"artifact_s3_uri,omitempty"`
-	TokensOut     int       `json:"tokens_out"`
-	Truncated     bool      `json:"truncated"`
-	StartedAt     time.Time `json:"started_at"`
-	CompletedAt   time.Time `json:"completed_at"`
+	ToolUseID      string    `json:"tool_use_id"`
+	Output         string    `json:"output"`
+	ArtifactFileID string    `json:"artifact_file_id,omitempty"`
+	TokensOut      int       `json:"tokens_out"`
+	Truncated      bool      `json:"truncated"`
+	StartedAt      time.Time `json:"started_at"`
+	CompletedAt    time.Time `json:"completed_at"`
 }
 
 // StartEvent is the payload of the SSE `start` frame. It carries the
