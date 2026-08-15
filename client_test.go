@@ -271,8 +271,10 @@ func TestError_InterfaceAndIs(t *testing.T) {
 func TestHTTPStatusFor_Roundtrip(t *testing.T) {
 	classes := []ErrorClass{
 		ErrorClassValidation,
+		ErrorClassUnauthenticated,
 		ErrorClassUnauthorised,
 		ErrorClassNotFound,
+		ErrorClassConflict,
 		ErrorClassTimeout,
 		ErrorClassCancelled,
 		ErrorClassUpstreamUnavailable,

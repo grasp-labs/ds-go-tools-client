@@ -5,12 +5,27 @@ import "net/http"
 // ErrorClass is the closed set of failure categories ds-tools may
 // surface. The class drives HTTP status mapping on the wire and
 // dispatcher behaviour in ds-mcp (e.g. whether to retry).
+//
+// The class is authoritative and travels in the response body (the
+// JSON of a non-2xx HTTP response and the SSE `error` frame). HTTP
+// status is derived from it via HTTPStatusFor; consumers read the
+// body's class first and fall back to ErrorClassFromHTTPStatus only
+// when a body is absent or unparseable (e.g. a 401/403 emitted by
+// upstream auth middleware before ds-tools' own handler runs).
+//
+//   - unauthenticated: caller identity rejected (401) — bad/expired JWT.
+//   - unauthorised:    caller authenticated but denied (403) — ABAC/policy.
+//   - conflict:        request conflicts with current state (409) — e.g. a
+//     backing unique-constraint violation. Client-visible but not a plain
+//     input-shape error, so distinct from validation.
 type ErrorClass string
 
 const (
 	ErrorClassValidation          ErrorClass = "validation"
+	ErrorClassUnauthenticated     ErrorClass = "unauthenticated"
 	ErrorClassUnauthorised        ErrorClass = "unauthorised"
 	ErrorClassNotFound            ErrorClass = "not_found"
+	ErrorClassConflict            ErrorClass = "conflict"
 	ErrorClassTimeout             ErrorClass = "timeout"
 	ErrorClassCancelled           ErrorClass = "cancelled"
 	ErrorClassInternal            ErrorClass = "internal"
@@ -61,8 +76,10 @@ func (e *Error) Is(target error) bool {
 //nolint:errname // these are class sentinels, not stack-attached errors.
 var (
 	ErrValidation          = &Error{Class: ErrorClassValidation}
+	ErrUnauthenticated     = &Error{Class: ErrorClassUnauthenticated}
 	ErrUnauthorised        = &Error{Class: ErrorClassUnauthorised}
 	ErrNotFound            = &Error{Class: ErrorClassNotFound}
+	ErrConflict            = &Error{Class: ErrorClassConflict}
 	ErrTimeout             = &Error{Class: ErrorClassTimeout}
 	ErrCancelled           = &Error{Class: ErrorClassCancelled}
 	ErrInternal            = &Error{Class: ErrorClassInternal}
@@ -75,11 +92,19 @@ var (
 func HTTPStatusFor(class ErrorClass) int {
 	switch class {
 	case ErrorClassValidation:
-		return http.StatusBadRequest
-	case ErrorClassUnauthorised:
+		// 422 rather than 400: input was well-formed JSON but failed
+		// tool-input or backing-service validation. Matches the Grasp
+		// platform's validation convention; the body's class is
+		// authoritative regardless.
+		return http.StatusUnprocessableEntity
+	case ErrorClassUnauthenticated:
 		return http.StatusUnauthorized
+	case ErrorClassUnauthorised:
+		return http.StatusForbidden
 	case ErrorClassNotFound:
 		return http.StatusNotFound
+	case ErrorClassConflict:
+		return http.StatusConflict
 	case ErrorClassTimeout:
 		return http.StatusGatewayTimeout
 	case ErrorClassCancelled:
@@ -100,12 +125,16 @@ func HTTPStatusFor(class ErrorClass) int {
 // unparseable body. Anything unrecognised maps to ErrorClassInternal.
 func ErrorClassFromHTTPStatus(status int) ErrorClass {
 	switch status {
-	case http.StatusBadRequest:
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		return ErrorClassValidation
-	case http.StatusUnauthorized, http.StatusForbidden:
+	case http.StatusUnauthorized:
+		return ErrorClassUnauthenticated
+	case http.StatusForbidden:
 		return ErrorClassUnauthorised
 	case http.StatusNotFound:
 		return ErrorClassNotFound
+	case http.StatusConflict:
+		return ErrorClassConflict
 	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
 		return ErrorClassTimeout
 	case 499:
