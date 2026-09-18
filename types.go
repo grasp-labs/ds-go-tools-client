@@ -12,6 +12,35 @@ package toolsclient
 
 import "time"
 
+// Effect classifies what a tool does to the resource it addresses. It is
+// the catalogue's authoritative answer to "does calling this change
+// anything", which consumers need in order to gate dispatch without
+// maintaining their own list of verb names.
+//
+// The criterion, so classification is not a judgement call: a tool is
+// EffectWrite when it changes, removes, or actuates the resource it
+// addresses, or creates new persistent resources *as its product*. It is
+// EffectRead when it only observes — even if delivering what it observed
+// produces a derived artifact.
+//
+// That last clause is load-bearing. A read whose result overflows the
+// inline budget is persisted to DS File and returned via
+// InvokeResult.ArtifactFileID; the dispatcher does this for any tool,
+// including a plain resource read. Such an artifact is delivery of
+// content the caller already asked for, not mutation of what was
+// addressed, so it does not make the tool EffectWrite.
+//
+// The empty string is not a valid classification. Consumers MUST treat an
+// unset Effect as EffectWrite: an unclassified tool is potentially
+// side-effecting, and failing closed is what lets this field roll out
+// without a breaking release.
+type Effect string
+
+const (
+	EffectRead  Effect = "read"
+	EffectWrite Effect = "write"
+)
+
 // ToolEntry is the catalogue record for a single tool. It is what
 // ds-mcp's sync job pulls down and caches.
 //
@@ -25,11 +54,21 @@ import "time"
 //
 // InputSchema is a decoded JSON Schema. Callers that need to validate
 // inputs should re-marshal it and feed to their schema validator.
+//
+// ResourceKey names the InputSchema property that identifies what the
+// call addresses — "path" for the resource verbs, but deliberately not
+// assumed: websearch addresses no platform resource and leaves this
+// empty, grep takes an optional "path" alongside its required "query",
+// and generate_image requires "prompt" with "path" naming only a
+// destination container. A consumer that hardcodes "path" mis-reads all
+// three, which is why the catalogue states it per tool.
 type ToolEntry struct {
 	ToolID              string            `json:"tool_id"`
 	Name                string            `json:"name"`
 	Descriptions        map[string]string `json:"descriptions"`
 	InputSchema         map[string]any    `json:"input_schema"`
+	Effect              Effect            `json:"effect"`
+	ResourceKey         string            `json:"resource_key,omitempty"`
 	Tags                []string          `json:"tags"`
 	Cost                int               `json:"cost"`
 	SupportsStreaming   bool              `json:"supports_streaming"`
