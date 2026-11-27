@@ -117,7 +117,9 @@ type InvokeRequest struct {
 // appear in the result; the tool's actual storage backend is its own
 // implementation detail behind DS File.
 //
-// ArtifactFileID is empty when there is no artifact.
+// ArtifactFileID is empty when there is no artifact. ArtifactContentType
+// is the file's DS File content type, so a client renders or offers it
+// without reading it first; empty means unknown.
 //
 // Truncated indicates the dispatcher capped the output at
 // ToolEntry.MaxResultTokens. A tool that knows its result will exceed
@@ -125,13 +127,14 @@ type InvokeRequest struct {
 // set ArtifactFileID, put a stable summary stub in Output, and set
 // Truncated.
 type InvokeResult struct {
-	ToolUseID      string    `json:"tool_use_id"`
-	Output         string    `json:"output"`
-	ArtifactFileID string    `json:"artifact_file_id,omitempty"`
-	TokensOut      int       `json:"tokens_out"`
-	Truncated      bool      `json:"truncated"`
-	StartedAt      time.Time `json:"started_at"`
-	CompletedAt    time.Time `json:"completed_at"`
+	ToolUseID           string    `json:"tool_use_id"`
+	Output              string    `json:"output"`
+	ArtifactFileID      string    `json:"artifact_file_id,omitempty"`
+	ArtifactContentType string    `json:"artifact_content_type,omitempty"`
+	TokensOut           int       `json:"tokens_out"`
+	Truncated           bool      `json:"truncated"`
+	StartedAt           time.Time `json:"started_at"`
+	CompletedAt         time.Time `json:"completed_at"`
 }
 
 // StartEvent is the payload of the SSE `start` frame. It carries the
